@@ -51,7 +51,8 @@ sub call {
                 }
             } else {
                 my $sha = Digest::SHA->new;
-                $sha->add( @{ $res->[2] } );
+                my $content = $res->[2];    # ArrayRef or IO::Handle-like object
+                $sha->add( ref($content) eq 'ARRAY' ? @$content : $content );
                 $etag = $sha->hexdigest;
             }
             Plack::Util::header_set( $headers, 'ETag', $etag );

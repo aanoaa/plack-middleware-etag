@@ -7,6 +7,7 @@ use Digest::SHA;
 use Plack::Test;
 use Plack::Builder;
 use HTTP::Request::Common;
+use Mojo::Server::PSGI;
 
 my $content = [qw/hello world/];
 my $sha = Digest::SHA->new->add(@$content)->hexdigest;
@@ -36,6 +37,20 @@ my $file_handler = builder {
    enable "Plack::Middleware::ETag";
    open my $fh, 'README';
    sub {[200, ['Content-Type' => 'text/html', ], $fh]};
+};
+
+my $mojo_handler = builder {
+   enable "Plack::Middleware::ETag";
+   my $psgi = Mojo::Server::PSGI->new;
+   $psgi->unsubscribe('request');
+   $psgi->on(request => sub {
+    my ($psgi, $tx) = @_;
+    $tx->res->code(200);
+    $tx->res->headers->content_type('text/plain');
+    $tx->res->body(join ' ', @$content);
+    $tx->resume;
+   });
+   $psgi->to_psgi_app;
 };
 
 my $cache_control = builder {
@@ -88,6 +103,19 @@ test_psgi
 
 test_psgi
     app    => $file_handler,
+    client => sub {
+    my $cb = shift;
+    {
+        my $req = GET "http://localhost/";
+        my $res = $cb->($req);
+        ok $res->header('ETag');
+	is $res->code, 200;
+	ok $res->content;
+    }
+};
+
+test_psgi
+    app    => $mojo_handler,
     client => sub {
     my $cb = shift;
     {
